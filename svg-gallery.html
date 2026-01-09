@@ -282,14 +282,38 @@
 
         let allSvgs = [];
         let filteredSvgs = [];
-        let githubToken = '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';
+        let githubToken = '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'.trim();
 
         // Token is hardcoded, enable upload button immediately
         window.addEventListener('load', () => {
             document.getElementById('uploadBtn').disabled = false;
             // Hide auth section since token is hardcoded
             document.getElementById('authSection').style.display = 'none';
+            
+            // Test token on load
+            testToken();
         });
+
+        // Test if token works
+        async function testToken() {
+            try {
+                const response = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}`, {
+                    headers: {
+                        'Authorization': `Bearer ${githubToken}`,
+                        'Accept': 'application/vnd.github+json',
+                        'X-GitHub-Api-Version': '2022-11-28'
+                    }
+                });
+                
+                if (response.ok) {
+                    console.log('✅ Token is valid and working!');
+                } else {
+                    console.error('❌ Token test failed:', response.status, await response.text());
+                }
+            } catch (error) {
+                console.error('❌ Token test error:', error);
+            }
+        }
 
         // Handle file upload
         document.getElementById('fileInput').addEventListener('change', async (e) => {
@@ -333,6 +357,9 @@
 
         // Upload file to GitHub
         async function uploadToGitHub(file) {
+            console.log('Token being used:', githubToken.substring(0, 20) + '...');
+            console.log('Uploading to repo:', GITHUB_USER + '/' + GITHUB_REPO);
+            
             const reader = new FileReader();
             
             return new Promise((resolve, reject) => {
