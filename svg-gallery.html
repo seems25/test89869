@@ -282,16 +282,20 @@
 
         let allSvgs = [];
         let filteredSvgs = [];
-        let githubToken = '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'.trim();
+        let githubToken = localStorage.getItem('github_token') || '';
 
-        // Token is hardcoded, enable upload button immediately
+        // Check if token is saved on load
         window.addEventListener('load', () => {
-            document.getElementById('uploadBtn').disabled = false;
-            // Hide auth section since token is hardcoded
-            document.getElementById('authSection').style.display = 'none';
+            if (githubToken) {
+                document.getElementById('tokenInput').value = githubToken;
+                document.getElementById('uploadBtn').disabled = false;
+                showAuthStatus('Token loaded from storage', 'success');
+            }
             
-            // Test token on load
-            testToken();
+            // Test token if it exists
+            if (githubToken) {
+                testToken();
+            }
         });
 
         // Test if token works
@@ -312,6 +316,34 @@
             } catch (error) {
                 console.error('❌ Token test error:', error);
             }
+        }
+
+        // Save GitHub token
+        function saveToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if (!token) {
+                showAuthStatus('Please enter a token', 'error');
+                return;
+            }
+            
+            localStorage.setItem('github_token', token);
+            githubToken = token;
+            document.getElementById('uploadBtn').disabled = false;
+            showAuthStatus('Token saved successfully! You can now upload files.', 'success');
+            
+            // Test the token
+            testToken();
+        }
+
+        function showAuthStatus(message, type) {
+            const statusDiv = document.getElementById('authStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `auth-status ${type}`;
+            statusDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
         }
 
         // Handle file upload
