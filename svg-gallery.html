@@ -26,6 +26,98 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .upload-section {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .upload-btn {
+            padding: 12px 24px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .upload-btn:hover {
+            background: #1976D2;
+        }
+
+        .upload-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .auth-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .auth-section input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
+        .auth-section button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .auth-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .auth-status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .auth-status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .upload-progress {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            display: none;
+        }
+
         h1 {
             margin-bottom: 20px;
             color: #333;
@@ -141,17 +233,44 @@
 <body>
     <div class="header">
         <h1>Football Club Logos Gallery</h1>
-        <input 
-            type="text" 
-            class="search-box" 
-            id="searchInput" 
-            placeholder="Search SVG files by name..."
-        >
+        
+        <div class="auth-section" id="authSection">
+            <strong>GitHub Personal Access Token (for uploads):</strong>
+            <input 
+                type="password" 
+                id="tokenInput" 
+                placeholder="Enter your GitHub token (repo permissions required)"
+            >
+            <button onclick="saveToken()">Save Token</button>
+            <div class="auth-status" id="authStatus" style="display:none;"></div>
+            <small style="display:block; margin-top:8px; color:#666;">
+                Need a token? Go to GitHub Settings → Developer settings → Personal access tokens → Generate new token (classic) with 'repo' permissions.
+            </small>
+        </div>
+
+        <div class="controls">
+            <div class="upload-section">
+                <input type="file" id="fileInput" accept=".svg,.png" multiple>
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()" id="uploadBtn" disabled>
+                    📁 Upload SVG/PNG Files
+                </button>
+            </div>
+            <div style="flex: 2;">
+                <input 
+                    type="text" 
+                    class="search-box" 
+                    id="searchInput" 
+                    placeholder="Search files by name..."
+                >
+            </div>
+        </div>
+
+        <div class="upload-progress" id="uploadProgress"></div>
         <div class="stats" id="stats">Loading...</div>
     </div>
 
     <div class="gallery" id="gallery">
-        <div class="loading">Loading SVG files...</div>
+        <div class="loading">Loading files...</div>
     </div>
 
     <script>
@@ -163,6 +282,117 @@
 
         let allSvgs = [];
         let filteredSvgs = [];
+        let githubToken = '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';
+
+        // Token is hardcoded, enable upload button immediately
+        window.addEventListener('load', () => {
+            document.getElementById('uploadBtn').disabled = false;
+            // Hide auth section since token is hardcoded
+            document.getElementById('authSection').style.display = 'none';
+        });
+
+        // Handle file upload
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            const progressDiv = document.getElementById('uploadProgress');
+            progressDiv.style.display = 'block';
+            progressDiv.innerHTML = `<strong>Uploading ${files.length} file(s)...</strong>`;
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                progressDiv.innerHTML = `<strong>Uploading ${i + 1}/${files.length}: ${file.name}</strong>`;
+                
+                try {
+                    await uploadToGitHub(file);
+                    successCount++;
+                } catch (error) {
+                    console.error(`Failed to upload ${file.name}:`, error);
+                    failCount++;
+                }
+            }
+
+            progressDiv.innerHTML = `
+                <strong>Upload Complete!</strong><br>
+                ✅ Success: ${successCount} | ❌ Failed: ${failCount}
+            `;
+
+            // Refresh gallery
+            setTimeout(() => {
+                fetchSvgFiles();
+                progressDiv.style.display = 'none';
+            }, 3000);
+
+            // Reset file input
+            e.target.value = '';
+        });
+
+        // Upload file to GitHub
+        async function uploadToGitHub(file) {
+            const reader = new FileReader();
+            
+            return new Promise((resolve, reject) => {
+                reader.onload = async () => {
+                    try {
+                        // Convert to base64
+                        const base64Content = reader.result.split(',')[1];
+                        
+                        // GitHub API URL
+                        const folder = SVG_FOLDER ? `${SVG_FOLDER}/` : '';
+                        const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${folder}${file.name}`;
+                        
+                        // Check if file already exists
+                        let sha = null;
+                        try {
+                            const checkResponse = await fetch(apiUrl, {
+                                headers: {
+                                    'Authorization': `token ${githubToken}`,
+                                    'Accept': 'application/vnd.github.v3+json'
+                                }
+                            });
+                            if (checkResponse.ok) {
+                                const existingFile = await checkResponse.json();
+                                sha = existingFile.sha;
+                            }
+                        } catch (e) {
+                            // File doesn't exist, which is fine
+                        }
+
+                        // Upload or update file
+                        const response = await fetch(apiUrl, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `token ${githubToken}`,
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/vnd.github.v3+json'
+                            },
+                            body: JSON.stringify({
+                                message: `Add ${file.name} via upload`,
+                                content: base64Content,
+                                branch: BRANCH,
+                                ...(sha && { sha }) // Include sha if updating existing file
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.message || 'Upload failed');
+                        }
+
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            });
+        }
 
         // Generate GitHub Pages URL for SVG
         function getSvgUrl(filename) {
@@ -170,7 +400,7 @@
             return `https://${GITHUB_USER}.github.io/${GITHUB_REPO}/${folder}${filename}`;
         }
 
-        // Fetch SVG files from GitHub API
+        // Fetch SVG/PNG files from GitHub API
         async function fetchSvgFiles() {
             try {
                 const folder = SVG_FOLDER ? `/${SVG_FOLDER}` : '';
@@ -179,9 +409,12 @@
                 const response = await fetch(apiUrl);
                 const files = await response.json();
                 
-                // Filter only SVG files
+                // Filter SVG and PNG files
                 allSvgs = files
-                    .filter(file => file.name.toLowerCase().endsWith('.svg'))
+                    .filter(file => {
+                        const name = file.name.toLowerCase();
+                        return name.endsWith('.svg') || name.endsWith('.png');
+                    })
                     .map(file => ({
                         name: file.name,
                         url: getSvgUrl(file.name)
@@ -191,10 +424,10 @@
                 renderGallery();
                 updateStats();
             } catch (error) {
-                console.error('Error fetching SVG files:', error);
+                console.error('Error fetching files:', error);
                 document.getElementById('gallery').innerHTML = `
                     <div class="no-results">
-                        Error loading SVG files. Please check your GitHub configuration.
+                        Error loading files. Please check your GitHub configuration.
                         <br><br>
                         Make sure to update GITHUB_USER, GITHUB_REPO, and SVG_FOLDER in the script.
                     </div>
@@ -207,7 +440,7 @@
             const gallery = document.getElementById('gallery');
             
             if (filteredSvgs.length === 0) {
-                gallery.innerHTML = '<div class="no-results">No SVG files found matching your search.</div>';
+                gallery.innerHTML = '<div class="no-results">No files found matching your search.</div>';
                 return;
             }
 
@@ -225,7 +458,7 @@
         // Update stats
         function updateStats() {
             const stats = document.getElementById('stats');
-            stats.textContent = `Showing ${filteredSvgs.length} of ${allSvgs.length} SVG files`;
+            stats.textContent = `Showing ${filteredSvgs.length} of ${allSvgs.length} files (SVG/PNG)`;
         }
 
         // Search functionality
